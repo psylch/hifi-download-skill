@@ -1,0 +1,12 @@
+{
+  "name": "hifi-download",
+  "description": "Music discovery and Hi-Res audio downloads via Spotify, Last.fm, Qobuz, and TIDAL",
+  "version": "1.0.0",
+  "author": {
+    "name": "psylch"
+  },
+  "homepage": "https://github.com/psylch/hifi-download-skill",
+  "repository": "https://github.com/psylch/hifi-download-skill",
+  "license": "MIT",
+  "keywords": ["music", "hifi", "flac", "hi-res", "qobuz", "tidal", "spotify", "lastfm", "download", "lossless"]
+}

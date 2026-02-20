@@ -1,0 +1,20 @@
+{
+  "name": "psylch-hifi-download-skill",
+  "owner": {
+    "name": "psylch"
+  },
+  "metadata": {
+    "description": "Music discovery and Hi-Res audio downloads via Spotify, Last.fm, Qobuz, and TIDAL"
+  },
+  "plugins": [
+    {
+      "name": "hifi-download",
+      "source": "./",
+      "description": "Discover music, get personalized recommendations, and download high-fidelity audio (FLAC/Hi-Res) from Qobuz or TIDAL",
+      "version": "1.0.0",
+      "category": "productivity",
+      "tags": ["music", "hifi", "flac", "qobuz", "tidal", "spotify", "lastfm", "lossless"],
+      "homepage": "https://github.com/psylch/hifi-download-skill"
+    }
+  ]
+}
