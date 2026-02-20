@@ -1,5 +1,7 @@
 # hifi-download-skill
 
+[中文文档](README.zh.md)
+
 A [Claude Code](https://docs.anthropic.com/en/docs/claude-code) skill for music discovery and high-quality audio downloads. Combines Spotify and Last.fm for discovery with Qobuz and TIDAL for lossless audio downloads.
 
 | Step | What Happens | Service Used |
