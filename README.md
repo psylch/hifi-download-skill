@@ -13,7 +13,15 @@ A [Claude Code](https://docs.anthropic.com/en/docs/claude-code) skill for music 
 
 ## Installation
 
-### Via skills.sh (recommended)
+### Install all media skills at once (recommended)
+
+This skill is part of [media-master](https://github.com/psylch/media-master), which bundles music, cloud drive, and book download skills:
+
+```bash
+npx skills add psylch/media-master -g -y
+```
+
+### Install this skill only
 
 ```bash
 npx skills add psylch/hifi-download-skill -g -y
