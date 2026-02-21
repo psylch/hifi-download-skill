@@ -13,6 +13,9 @@
 # Downloads
 downloads/
 
+# Runtime tilde directory (created by path expansion artifacts)
+~/
+
 # Python
 __pycache__/
 *.py[cod]
