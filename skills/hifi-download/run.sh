@@ -53,7 +53,7 @@ if [ "$1" = "preflight" ]; then
         ready=false
     fi
 
-    local hint
+    hint=""
     if [ "$ready" = "true" ]; then
         hint="All checks passed. Environment is ready."
     else
