@@ -180,7 +180,7 @@ bash ${SKILL_PATH}/run.sh enable_service spotify
 2. Search: `platform_search "Album Name" -p qobuz`
 3. Present results with quality info
 4. Download: `platform_download ID -p qobuz -t album` (returns download_id immediately)
-5. **Immediately** open the download dashboard with `download_ui` so the user can see real-time progress — this serves as visual feedback confirming the download has started
+5. **Immediately** open the download dashboard with `download_ui` so the user can see real-time progress — **run this command in the background** (use `run_in_background: true` in Bash) since the dashboard is a long-running server process that will block otherwise
 6. Tell user the files will appear in the default download directory (`~/Music/Qobuz` or `~/Music/TIDAL`)
 7. **Do NOT poll `download_status` in a loop.** The dashboard handles progress visualization — move on immediately after opening it. Only poll on behalf of the user if they explicitly ask you to check for them.
 
