@@ -4,18 +4,18 @@ Configure MusicMaster API credentials.
 
 Usage:
     # Full setup
-    python scripts/setup_config.py \\
-        --spotify-id=CLIENT_ID \\
-        --spotify-secret=CLIENT_SECRET \\
+    python scripts/setup_config.py \
+        --spotify-id=CLIENT_ID \
+        --spotify-secret=CLIENT_SECRET \
         --lastfm-key=API_KEY
 
     # Partial setup (Last.fm only)
     python scripts/setup_config.py --lastfm-key=API_KEY
 
     # Partial setup (Last.fm + Qobuz)
-    python scripts/setup_config.py \\
-        --lastfm-key=API_KEY \\
-        --qobuz-email=EMAIL \\
+    python scripts/setup_config.py \
+        --lastfm-key=API_KEY \
+        --qobuz-email=EMAIL \
         --qobuz-password=PASSWORD
 
 Creates/updates .env file with API credentials.
@@ -29,6 +29,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
+from lib.output import ok, fail
 from lib.preferences import Preferences
 
 
@@ -107,13 +108,11 @@ Where to get credentials:
     has_qobuz = args.qobuz_email and args.qobuz_password
 
     if not (has_spotify or has_lastfm or has_qobuz):
-        print("Error: At least one service must be configured.")
-        print()
-        print("Examples:")
-        print("  --lastfm-key=KEY                    (Last.fm only)")
-        print("  --spotify-id=ID --spotify-secret=SECRET  (Spotify)")
-        print("  --qobuz-email=EMAIL --qobuz-password=PASS  (Qobuz)")
-        sys.exit(1)
+        fail(
+            "No service credentials provided",
+            hint="Provide at least one: --lastfm-key, --spotify-id + --spotify-secret, or --qobuz-email + --qobuz-password",
+            recoverable=True
+        )
 
     # Load existing values to preserve them
     existing = load_existing_env()
@@ -161,11 +160,11 @@ Where to get credentials:
         lines.append("# Not configured")
     lines.append("")
 
-    # TIDAL (always write defaults, actual auth is via tidal-dl)
+    # TIDAL (always write defaults, actual auth is via tiddl)
     lines.append("# === TIDAL ===")
     lines.append(f"TIDAL_QUALITY={args.tidal_quality}")
     lines.append(f"TIDAL_DOWNLOAD_PATH={args.tidal_path}")
-    lines.append("# Note: TIDAL requires separate OAuth via 'tidal-dl' command")
+    lines.append("# Note: TIDAL requires separate OAuth via 'tiddl auth login'")
 
     env_content = "\n".join(lines) + "\n"
 
@@ -177,41 +176,33 @@ Where to get credentials:
     # Update preferences for configured services
     prefs = Preferences.load()
 
-    print(f"Configuration saved to: {env_file}")
-    print()
-    print("Configured services:")
+    configured = []
+    unchanged = []
 
     if has_spotify:
-        print(f"  [+] Spotify: {args.spotify_id[:8]}...")
         prefs.enable_service("spotify")
+        configured.append("spotify")
     elif existing.get("SPOTIFY_CLIENT_ID"):
-        print(f"  [=] Spotify: {existing['SPOTIFY_CLIENT_ID'][:8]}... (unchanged)")
-    else:
-        print("  [-] Spotify: Not configured")
+        unchanged.append("spotify")
 
     if has_lastfm:
-        print(f"  [+] Last.fm: {args.lastfm_key[:8]}...")
         prefs.enable_service("lastfm")
+        configured.append("lastfm")
     elif existing.get("LASTFM_API_KEY"):
-        print(f"  [=] Last.fm: {existing['LASTFM_API_KEY'][:8]}... (unchanged)")
-    else:
-        print("  [-] Last.fm: Not configured")
+        unchanged.append("lastfm")
 
     if has_qobuz:
-        print(f"  [+] Qobuz: {args.qobuz_email}")
         prefs.enable_service("qobuz")
+        configured.append("qobuz")
     elif existing.get("QOBUZ_EMAIL"):
-        print(f"  [=] Qobuz: {existing['QOBUZ_EMAIL']} (unchanged)")
-    else:
-        print("  [-] Qobuz: Not configured")
+        unchanged.append("qobuz")
 
-    print("  [-] TIDAL: Requires separate OAuth (run 'tidal-dl')")
-
-    print()
-    if has_spotify:
-        print("Next step: Run spotify_auth.py to complete Spotify OAuth")
-    else:
-        print("Next step: Run './run.sh status' to verify configuration")
+    ok({
+        "status": "ok",
+        "configured": configured,
+        "unchanged": unchanged,
+        "env_file": str(env_file)
+    }, hint="Configuration saved. Run status to verify.")
 
 
 if __name__ == "__main__":

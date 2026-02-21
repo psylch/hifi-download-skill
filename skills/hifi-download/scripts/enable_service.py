@@ -16,8 +16,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from lib.preferences import Preferences
 from lib.config import Config
+from lib.output import ok, fail
+from lib.preferences import Preferences
 
 
 VALID_SERVICES = ['spotify', 'lastfm', 'qobuz', 'tidal']
@@ -47,32 +48,30 @@ using setup_config.py if not already done.
 
     prefs.enable_service(args.service)
 
-    print(f"Enabled: {args.service}")
-    print()
-
     # Check if configuration is needed
     needs_config = False
+    config_hint = ""
     if args.service == "spotify" and not config.spotify.is_configured():
         needs_config = True
-        print("Note: Spotify credentials not configured yet.")
-        print("Run: setup_config.py --spotify-id=... --spotify-secret=...")
+        config_hint = "Run setup_config.py with --spotify-id=... --spotify-secret=..."
     elif args.service == "lastfm" and not config.lastfm.is_configured():
         needs_config = True
-        print("Note: Last.fm API key not configured yet.")
-        print("Run: setup_config.py --lastfm-key=...")
+        config_hint = "Run setup_config.py with --lastfm-key=..."
     elif args.service == "qobuz" and not config.qobuz.is_configured():
         needs_config = True
-        print("Note: Qobuz credentials not configured yet.")
-        print("Run: setup_config.py --qobuz-email=... --qobuz-password=...")
+        config_hint = "Run setup_config.py with --qobuz-email=... --qobuz-password=..."
     elif args.service == "tidal":
-        tidal_config = Path.home() / ".tidal-dl.json"
-        if not tidal_config.exists():
+        tiddl_config = Path.home() / "tiddl.json"
+        if not tiddl_config.exists():
             needs_config = True
-            print("Note: TIDAL not logged in yet.")
-            print("Run: tidal-dl")
+            config_hint = "Run tidal_auth.py to authorize TIDAL"
 
-    if not needs_config:
-        print("Service is ready to use.")
+    result = {"service": args.service, "status": "enabled"}
+    if needs_config:
+        result["needs_config"] = True
+        result["config_hint"] = config_hint
+
+    ok(result, hint=f"Enabled {args.service}. {'Credentials still needed.' if needs_config else 'Ready to use.'}")
 
 
 if __name__ == "__main__":

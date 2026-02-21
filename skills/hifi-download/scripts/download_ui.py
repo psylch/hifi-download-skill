@@ -506,8 +506,9 @@ def main():
         except OSError:
             port += 1
     if server is None:
-        print(f"Error: could not find an available port (tried {args.port}-{port})", file=sys.stderr)
-        sys.exit(1)
+        print(json.dumps({"error": f"Could not find an available port (tried {args.port}-{port})",
+                           "recoverable": False}, ensure_ascii=False), file=sys.stderr)
+        sys.exit(2)
     url = f"http://{host}:{port}"
 
     def shutdown_handler(sig, frame):

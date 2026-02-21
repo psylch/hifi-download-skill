@@ -10,6 +10,17 @@ sys.path.insert(0, str(Path(__file__).parent))
 from lib.config import Config
 from lib.spotify import SpotifyService
 from lib.lastfm import LastfmService
+from lib.output import ok, fail
+
+
+def extract_artists(data: dict) -> list:
+    """Extract artist names from spotify user data."""
+    return [r["name"] for r in data.get("results", [])]
+
+
+def extract_tracks(data: dict) -> list:
+    """Extract (track, artist) tuples from spotify user data."""
+    return [(r["name"], r["artists"]) for r in data.get("results", [])]
 
 
 def main():
@@ -24,60 +35,37 @@ def main():
                         help="Recommendations per seed item (default: 5)")
     args = parser.parse_args()
 
+    config = Config.load()
+
+    if not config.spotify.is_configured():
+        fail("Spotify not configured", hint="Run setup_config.py with Spotify credentials", recoverable=False)
+    if not config.lastfm.is_configured():
+        fail("Last.fm API key not configured", hint="Run setup_config.py with --lastfm-key=KEY", recoverable=False)
+
     try:
-        config = Config.load()
-
-        # Check configs
-        if not config.spotify.is_configured():
-            print("Error: Spotify not configured.", file=sys.stderr)
-            sys.exit(1)
-        if not config.lastfm.is_configured():
-            print("Error: Last.fm API key not configured.", file=sys.stderr)
-            sys.exit(1)
-
-        # Get user's top items from Spotify
         spotify = SpotifyService(config.spotify)
 
-        print("Fetching your Spotify listening history...\n")
+        top_artists_data = spotify.get_user_data("artists", args.time_range, 5)
+        top_artists = extract_artists(top_artists_data)
 
-        # Get top artists
-        top_artists_result = spotify.get_user_data("artists", args.time_range, 5, "concise")
-        top_artists = []
-        for line in top_artists_result.split('\n'):
-            if line and line[0].isdigit():
-                # Extract artist name: "1. Artist Name (ID: xxx)"
-                parts = line.split('. ', 1)
-                if len(parts) > 1:
-                    name = parts[1].split(' (ID:')[0]
-                    top_artists.append(name)
-
-        # Get top tracks
-        top_tracks_result = spotify.get_user_data("tracks", args.time_range, 5, "concise")
-        top_tracks = []
-        for line in top_tracks_result.split('\n'):
-            if line and line[0].isdigit():
-                # Extract: "1. Track Name by Artist (ID: xxx)"
-                parts = line.split('. ', 1)
-                if len(parts) > 1:
-                    rest = parts[1].split(' (ID:')[0]
-                    if ' by ' in rest:
-                        track, artist = rest.rsplit(' by ', 1)
-                        top_tracks.append((track, artist))
+        top_tracks_data = spotify.get_user_data("tracks", args.time_range, 5)
+        top_tracks = extract_tracks(top_tracks_data)
 
         if not top_artists and not top_tracks:
-            print("No listening history found. Listen to more music on Spotify first!")
-            sys.exit(0)
+            ok({"results": [], "total": 0},
+               hint="No listening history found. Listen to more music on Spotify first!")
+            return
 
-        print(f"Found {len(top_artists)} top artists and {len(top_tracks)} top tracks.\n")
-
-        # Get recommendations from Last.fm
         lastfm = LastfmService(config.lastfm.api_key)
         result = lastfm.discover_from_taste(top_artists, top_tracks, args.per_item)
-        print(result)
 
-    except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
-        sys.exit(1)
+        total_artists = sum(len(v) for v in result["similar_artists"].values())
+        total_tracks = sum(len(v) for v in result["similar_tracks"].values())
+
+        ok(result, hint=f"Discovered {total_artists} similar artists and {total_tracks} similar tracks based on your taste")
+
+    except ValueError as e:
+        fail(str(e), hint="Check your API keys and network connection")
 
 
 if __name__ == "__main__":

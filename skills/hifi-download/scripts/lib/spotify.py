@@ -40,137 +40,134 @@ class SpotifyService:
             self._auth_client = spotipy.Spotify(auth_manager=auth)
         return self._auth_client
 
+    @staticmethod
+    def _format_duration(ms: int) -> str:
+        """Format milliseconds to M:SS string."""
+        return f"{ms // 60000}:{(ms % 60000) // 1000:02d}"
+
     def search(
         self,
         query: str,
         search_type: str = "track",
         limit: int = 10,
         market: str = "US",
-        mode: Literal["concise", "detailed"] = "concise"
-    ) -> str:
-        """Search Spotify."""
+    ) -> dict:
+        """Search Spotify. Returns structured dict."""
         client = self._get_client()
         results = client.search(q=query, type=search_type, limit=limit, market=market)
 
         key = f"{search_type}s"
         items = results.get(key, {}).get("items", [])
 
-        if not items:
-            return f"No {search_type}s found for '{query}'"
-
-        output = [f"Found {len(items)} {search_type}(s) for '{query}':\n"]
-
-        for idx, item in enumerate(items, 1):
+        parsed = []
+        for item in items:
             if search_type == "track":
                 artists = ", ".join([a["name"] for a in item["artists"]])
-                duration = f"{item['duration_ms'] // 60000}:{(item['duration_ms'] % 60000) // 1000:02d}"
-                if mode == "concise":
-                    output.append(f"{idx}. {item['name']} by {artists} (ID: {item['id']})")
-                else:
-                    output.append(f"{idx}. {item['name']}")
-                    output.append(f"   Artist(s): {artists}")
-                    output.append(f"   Album: {item['album']['name']}")
-                    output.append(f"   Duration: {duration}")
-                    output.append(f"   Spotify ID: {item['id']}")
-                    output.append(f"   URL: {item['external_urls']['spotify']}\n")
-
+                parsed.append({
+                    "name": item["name"],
+                    "artists": artists,
+                    "id": item["id"],
+                    "album": item["album"]["name"],
+                    "duration": self._format_duration(item["duration_ms"]),
+                    "url": item["external_urls"]["spotify"],
+                })
             elif search_type == "album":
                 artists = ", ".join([a["name"] for a in item["artists"]])
-                if mode == "concise":
-                    output.append(f"{idx}. {item['name']} by {artists} (ID: {item['id']})")
-                else:
-                    output.append(f"{idx}. {item['name']}")
-                    output.append(f"   Artist(s): {artists}")
-                    output.append(f"   Release: {item['release_date']}")
-                    output.append(f"   Tracks: {item['total_tracks']}")
-                    output.append(f"   Spotify ID: {item['id']}")
-                    output.append(f"   URL: {item['external_urls']['spotify']}\n")
-
+                parsed.append({
+                    "name": item["name"],
+                    "artists": artists,
+                    "id": item["id"],
+                    "release_date": item["release_date"],
+                    "total_tracks": item["total_tracks"],
+                    "url": item["external_urls"]["spotify"],
+                })
             elif search_type == "artist":
-                genres = ", ".join(item.get("genres", [])) or "No genres"
-                if mode == "concise":
-                    output.append(f"{idx}. {item['name']} (ID: {item['id']})")
-                else:
-                    output.append(f"{idx}. {item['name']}")
-                    output.append(f"   Genres: {genres}")
-                    output.append(f"   Popularity: {item.get('popularity', 0)}/100")
-                    output.append(f"   Spotify ID: {item['id']}")
-                    output.append(f"   URL: {item['external_urls']['spotify']}\n")
+                parsed.append({
+                    "name": item["name"],
+                    "id": item["id"],
+                    "genres": ", ".join(item.get("genres", [])) or "No genres",
+                    "popularity": item.get("popularity", 0),
+                    "url": item["external_urls"]["spotify"],
+                })
 
-        return "\n".join(output)
+        return {
+            "results": parsed,
+            "total": len(parsed),
+            "query": query,
+            "search_type": search_type,
+        }
 
     def get_info(
         self,
         item_id: str,
         item_type: Literal["track", "album", "artist"],
-        mode: Literal["concise", "detailed"] = "detailed"
-    ) -> str:
-        """Get item details."""
+    ) -> dict:
+        """Get item details. Returns structured dict."""
         client = self._get_client()
 
         if item_type == "track":
             track = client.track(item_id)
             artists = ", ".join([a["name"] for a in track["artists"]])
-            duration = f"{track['duration_ms'] // 60000}:{(track['duration_ms'] % 60000) // 1000:02d}"
-            if mode == "concise":
-                return f"{track['name']} by {artists} ({duration})"
-            return f"""Track: {track['name']}
-Artist(s): {artists}
-Album: {track['album']['name']} ({track['album']['release_date']})
-Duration: {duration}
-Popularity: {track.get('popularity', 0)}/100
-Spotify ID: {track['id']}
-URL: {track['external_urls']['spotify']}"""
+            return {
+                "name": track["name"],
+                "artists": artists,
+                "album": track["album"]["name"],
+                "duration": self._format_duration(track["duration_ms"]),
+                "popularity": track.get("popularity", 0),
+                "id": track["id"],
+                "url": track["external_urls"]["spotify"],
+            }
 
         elif item_type == "album":
             album = client.album(item_id)
             artists = ", ".join([a["name"] for a in album["artists"]])
             genres = ", ".join(album.get("genres", [])) or "No genres"
-            if mode == "concise":
-                return f"{album['name']} by {artists} ({album['total_tracks']} tracks)"
             tracks = []
-            for i, t in enumerate(album["tracks"]["items"], 1):
-                dur = f"{t['duration_ms'] // 60000}:{(t['duration_ms'] % 60000) // 1000:02d}"
-                tracks.append(f"  {i}. {t['name']} ({dur}) [ID: {t['id']}]")
-            return f"""Album: {album['name']}
-Artist(s): {artists}
-Release: {album['release_date']}
-Tracks: {album['total_tracks']}
-Genres: {genres}
-Spotify ID: {album['id']}
-URL: {album['external_urls']['spotify']}
-
-Tracklist:
-{chr(10).join(tracks)}"""
+            for t in album["tracks"]["items"]:
+                tracks.append({
+                    "name": t["name"],
+                    "duration": self._format_duration(t["duration_ms"]),
+                    "id": t["id"],
+                })
+            return {
+                "name": album["name"],
+                "artists": artists,
+                "release_date": album["release_date"],
+                "total_tracks": album["total_tracks"],
+                "genres": genres,
+                "id": album["id"],
+                "url": album["external_urls"]["spotify"],
+                "tracks": tracks,
+            }
 
         elif item_type == "artist":
             artist = client.artist(item_id)
             top = client.artist_top_tracks(item_id)
             genres = ", ".join(artist.get("genres", [])) or "No genres"
-            followers = f"{artist['followers']['total']:,}"
-            if mode == "concise":
-                return f"{artist['name']} - {genres} ({followers} followers)"
             top_tracks = []
-            for i, t in enumerate(top["tracks"][:10], 1):
-                top_tracks.append(f"  {i}. {t['name']} (from {t['album']['name']}) [ID: {t['id']}]")
-            return f"""Artist: {artist['name']}
-Genres: {genres}
-Popularity: {artist.get('popularity', 0)}/100
-Followers: {followers}
-Spotify ID: {artist['id']}
-URL: {artist['external_urls']['spotify']}
-
-Top Tracks:
-{chr(10).join(top_tracks)}"""
+            for t in top["tracks"][:10]:
+                top_tracks.append({
+                    "name": t["name"],
+                    "album": t["album"]["name"],
+                    "id": t["id"],
+                })
+            return {
+                "name": artist["name"],
+                "genres": genres,
+                "popularity": artist.get("popularity", 0),
+                "followers": artist["followers"]["total"],
+                "id": artist["id"],
+                "url": artist["external_urls"]["spotify"],
+                "top_tracks": top_tracks,
+            }
 
     def get_user_data(
         self,
         data_type: Literal["tracks", "artists"],
         time_range: str = "medium_term",
         limit: int = 20,
-        mode: Literal["concise", "detailed"] = "concise"
-    ) -> str:
-        """Get user's top tracks or artists."""
+    ) -> dict:
+        """Get user's top tracks or artists. Returns structured dict."""
         client = self._get_auth_client()
 
         time_desc = {
@@ -179,35 +176,31 @@ Top Tracks:
             "long_term": "all time"
         }.get(time_range, time_range)
 
+        parsed = []
         if data_type == "tracks":
             results = client.current_user_top_tracks(time_range=time_range, limit=limit)
-            items = results.get("items", [])
-            if not items:
-                return "No top tracks found"
-            output = [f"Your top {len(items)} tracks from {time_desc}:\n"]
-            for idx, track in enumerate(items, 1):
+            for track in results.get("items", []):
                 artists = ", ".join([a["name"] for a in track["artists"]])
-                if mode == "concise":
-                    output.append(f"{idx}. {track['name']} by {artists} (ID: {track['id']})")
-                else:
-                    output.append(f"{idx}. {track['name']}")
-                    output.append(f"   Artist(s): {artists}")
-                    output.append(f"   Album: {track['album']['name']}")
-                    output.append(f"   Spotify ID: {track['id']}\n")
-
+                parsed.append({
+                    "name": track["name"],
+                    "artists": artists,
+                    "id": track["id"],
+                    "album": track["album"]["name"],
+                })
         elif data_type == "artists":
             results = client.current_user_top_artists(time_range=time_range, limit=limit)
-            items = results.get("items", [])
-            if not items:
-                return "No top artists found"
-            output = [f"Your top {len(items)} artists from {time_desc}:\n"]
-            for idx, artist in enumerate(items, 1):
-                genres = ", ".join(artist.get("genres", [])) or "No genres"
-                if mode == "concise":
-                    output.append(f"{idx}. {artist['name']} (ID: {artist['id']})")
-                else:
-                    output.append(f"{idx}. {artist['name']}")
-                    output.append(f"   Genres: {genres}")
-                    output.append(f"   Popularity: {artist.get('popularity', 0)}/100\n")
+            for artist in results.get("items", []):
+                parsed.append({
+                    "name": artist["name"],
+                    "id": artist["id"],
+                    "genres": ", ".join(artist.get("genres", [])) or "No genres",
+                    "popularity": artist.get("popularity", 0),
+                })
 
-        return "\n".join(output)
+        return {
+            "results": parsed,
+            "total": len(parsed),
+            "data_type": data_type,
+            "time_range": time_range,
+            "time_desc": time_desc,
+        }

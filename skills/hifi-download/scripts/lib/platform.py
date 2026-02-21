@@ -1,6 +1,6 @@
 """Platform service for TIDAL and Qobuz downloads."""
 
-from typing import Optional, Literal, Callable
+from typing import Optional, Literal, Callable, Union
 from .config import TidalConfig, QobuzConfig
 
 
@@ -48,8 +48,8 @@ class QobuzService:
         query: str,
         search_type: Literal["track", "album", "artist"] = "album",
         limit: int = 10
-    ) -> str:
-        """Search Qobuz (suppresses qobuz-dl's verbose output)."""
+    ) -> dict:
+        """Search Qobuz (suppresses qobuz-dl's verbose output). Returns dict."""
         import sys
         import os
 
@@ -70,17 +70,17 @@ class QobuzService:
             os.close(old_stderr_fd)
 
         if not results:
-            return f"No {search_type}s found on Qobuz for '{query}'"
+            return {"results": [], "total": 0, "query": query, "platform": "qobuz", "search_type": search_type}
 
-        output = [f"Found {len(results)} Qobuz {search_type}(s) for '{query}':\n"]
-        for idx, item in enumerate(results, 1):
+        items = []
+        for item in results:
             text = item.get('text', 'Unknown')
             url = item.get('url', '')
-            qobuz_id = url.split('/')[-1] if url else 'N/A'
-            output.append(f"{idx}. {text}")
-            output.append(f"   [Qobuz ID: {qobuz_id}]")
+            qobuz_id = url.split('/')[-1] if url else ''
+            entry = {"name": text, "qobuz_id": qobuz_id, "type": search_type}
+            items.append(entry)
 
-        return "\n".join(output)
+        return {"results": items, "total": len(items), "query": query, "platform": "qobuz", "search_type": search_type}
 
     def download(
         self,
@@ -88,8 +88,8 @@ class QobuzService:
         item_type: Literal["track", "album"] = "album",
         output_path: Optional[str] = None,
         progress_callback: Optional[Callable[[int, int], None]] = None
-    ) -> str:
-        """Download from Qobuz using CLI for cleaner output."""
+    ) -> dict:
+        """Download from Qobuz using CLI for cleaner output. Returns dict."""
         import subprocess
         import sys
         import os
@@ -132,7 +132,7 @@ class QobuzService:
 
             if result.returncode != 0:
                 error_msg = result.stderr or result.stdout or "Unknown error"
-                return f"Error downloading from Qobuz: {error_msg}"
+                return {"error": f"Downloading from Qobuz failed: {error_msg}"}
 
             # Verify download succeeded by checking for new files
             folders_after = set(dl_path.iterdir()) if dl_path.exists() else set()
@@ -142,20 +142,20 @@ class QobuzService:
                 # Check if error in output
                 output = result.stdout + result.stderr
                 if "not found" in output.lower() or "error" in output.lower():
-                    return f"Error: Qobuz {item_type} not found (ID: {item_id}). Please verify the ID is correct."
-                return f"Error: Download completed but no files were created. The {item_type} ID '{item_id}' may be invalid."
+                    return {"error": f"Qobuz {item_type} not found (ID: {item_id}). Please verify the ID is correct."}
+                return {"error": f"Download completed but no files were created. The {item_type} ID '{item_id}' may be invalid."}
 
             if progress_callback:
                 progress_callback(1, 1)
 
             # Report the actual downloaded folder name
             downloaded_name = list(new_folders)[0].name
-            return f"Downloaded: {downloaded_name}\nLocation: {download_path}"
+            return {"status": "ok", "downloaded": downloaded_name, "location": download_path}
 
         except subprocess.TimeoutExpired:
-            return f"Download timed out for Qobuz {item_type}: {item_id}"
+            return {"error": f"Download timed out for Qobuz {item_type}: {item_id}"}
         except Exception as e:
-            return f"Error downloading from Qobuz: {e}"
+            return {"error": f"Downloading from Qobuz failed: {e}"}
 
 
 class TidalService:
@@ -223,8 +223,8 @@ class TidalService:
         query: str,
         search_type: Literal["track", "album", "artist"] = "album",
         limit: int = 10
-    ) -> str:
-        """Search TIDAL using tiddl API. Auto-retries on token expiration."""
+    ) -> dict:
+        """Search TIDAL using tiddl API. Auto-retries on token expiration. Returns dict."""
         max_retries = 2
         for attempt in range(max_retries):
             try:
@@ -241,7 +241,7 @@ class TidalService:
                 raise  # Re-raise if not token error or max retries reached
 
         if not result:
-            return f"No results found on TIDAL for '{query}'"
+            return {"results": [], "total": 0, "query": query, "platform": "tidal", "search_type": search_type}
 
         # Get items based on search type (result.X is a container with .items list)
         if search_type == "track":
@@ -257,22 +257,21 @@ class TidalService:
             raise ValueError(f"Invalid type: {search_type}")
 
         if not items:
-            return f"No {search_type}s found on TIDAL for '{query}'"
+            return {"results": [], "total": 0, "query": query, "platform": "tidal", "search_type": search_type}
 
-        output = [f"Found {len(items)} TIDAL {search_type}(s) for '{query}':\n"]
-        for idx, item in enumerate(items, 1):
+        result_items = []
+        for item in items:
             if search_type == "track":
                 artists = ", ".join([a.name for a in item.artists]) if item.artists else "Unknown"
-                dur = item.duration or 0
-                output.append(f"{idx}. {item.title} by {artists} ({dur // 60}:{dur % 60:02d}) [ID: {item.id}]")
+                entry = {"name": item.title, "artists": artists, "id": str(item.id), "type": "track", "duration": item.duration or 0}
             elif search_type == "album":
                 artists = ", ".join([a.name for a in item.artists]) if item.artists else "Unknown"
-                tracks = item.numberOfTracks or 0
-                output.append(f"{idx}. {item.title} by {artists} ({tracks} tracks) [ID: {item.id}]")
+                entry = {"name": item.title, "artists": artists, "id": str(item.id), "type": "album", "total_tracks": item.numberOfTracks or 0}
             elif search_type == "artist":
-                output.append(f"{idx}. {item.name} [ID: {item.id}]")
+                entry = {"name": item.name, "id": str(item.id), "type": "artist"}
+            result_items.append(entry)
 
-        return "\n".join(output)
+        return {"results": result_items, "total": len(result_items), "query": query, "platform": "tidal", "search_type": search_type}
 
     def _refresh_token(self) -> bool:
         """Refresh TIDAL token. Returns True if successful."""
@@ -295,8 +294,8 @@ class TidalService:
         item_type: Literal["track", "album"] = "album",
         output_path: Optional[str] = None,
         progress_callback: Optional[Callable[[int, int], None]] = None
-    ) -> str:
-        """Download from TIDAL using tiddl CLI.
+    ) -> dict:
+        """Download from TIDAL using tiddl CLI. Returns dict.
 
         Auto-refreshes token and retries on expiration - user never sees token errors.
         """
@@ -359,7 +358,7 @@ class TidalService:
                     if ("expired" in error_msg.lower() or "401" in error_msg) and attempt < max_retries - 1:
                         if self._refresh_token():
                             continue  # Retry download
-                    return f"Error downloading from TIDAL: {error_msg}"
+                    return {"error": f"Downloading from TIDAL failed: {error_msg}"}
 
                 # Verify download succeeded by checking for new files
                 folders_after = set(dl_path.iterdir()) if dl_path.exists() else set()
@@ -368,22 +367,22 @@ class TidalService:
                 if not new_folders:
                     output = result.stdout + result.stderr
                     if "not found" in output.lower() or "error" in output.lower():
-                        return f"Error: TIDAL {item_type} not found (ID: {item_id}). Please verify the ID is correct."
-                    return f"Error: Download completed but no files were created. The {item_type} ID '{item_id}' may be invalid."
+                        return {"error": f"TIDAL {item_type} not found (ID: {item_id}). Please verify the ID is correct."}
+                    return {"error": f"Download completed but no files were created. The {item_type} ID '{item_id}' may be invalid."}
 
                 if progress_callback:
                     progress_callback(1, 1)
 
                 # Report the actual downloaded folder name
                 downloaded_name = list(new_folders)[0].name
-                return f"Downloaded: {downloaded_name}\nLocation: {download_path}"
+                return {"status": "ok", "downloaded": downloaded_name, "location": download_path}
 
             except subprocess.TimeoutExpired:
-                return f"Download timed out for TIDAL {item_type}: {item_id}"
+                return {"error": f"Download timed out for TIDAL {item_type}: {item_id}"}
             except Exception as e:
-                return f"Error downloading from TIDAL: {e}"
+                return {"error": f"Downloading from TIDAL failed: {e}"}
 
-        return f"Error downloading from TIDAL: Max retries exceeded"
+        return {"error": "Downloading from TIDAL failed: Max retries exceeded"}
 
 
 def get_platform_service(platform: str, config):

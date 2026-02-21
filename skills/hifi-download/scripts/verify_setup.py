@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """Verify MusicMaster configuration and test connections."""
 
+import argparse
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
 from lib.config import Config
+from lib.output import ok, fail
 
 
 def check_spotify(config):
@@ -95,47 +97,90 @@ def check_tidal(config):
         return False, f"Error: {e}"
 
 
+def format_human_readable(services_result, all_ok, required_ok):
+    """Format verification results as human-readable text."""
+    lines = ["MusicMaster Setup Verification", "", "=" * 50]
+
+    for name, (is_ok, message) in services_result.items():
+        icon = "+" if is_ok else "-"
+        status = "OK" if is_ok else "FAIL"
+        lines.append(f"[{icon}] {name}: {status}")
+        lines.append(f"    {message}")
+
+    lines.append("=" * 50)
+
+    if all_ok:
+        lines.append("")
+        lines.append("All services configured and connected!")
+    elif required_ok:
+        lines.append("")
+        lines.append("Required services (Spotify, Last.fm) are working.")
+        lines.append("Download services (Qobuz/TIDAL) are optional.")
+    else:
+        lines.append("")
+        lines.append("Required services not configured.")
+        lines.append("Please configure Spotify and Last.fm to use MusicMaster.")
+
+    return "\n".join(lines)
+
+
 def main():
-    print("MusicMaster Setup Verification\n")
-    print("=" * 50)
+    parser = argparse.ArgumentParser(description="Verify MusicMaster configuration")
+    parser.add_argument("--format", choices=["json", "text"], default="json",
+                        help="Output format (default: json)")
+    args = parser.parse_args()
 
     config = Config.load()
 
     # Check each service
-    services = [
-        ("Spotify", check_spotify),
-        ("Last.fm", check_lastfm),
-        ("Qobuz", check_qobuz),
-        ("TIDAL", check_tidal),
-    ]
+    checkers = {
+        "Spotify": check_spotify,
+        "Last.fm": check_lastfm,
+        "Qobuz": check_qobuz,
+        "TIDAL": check_tidal,
+    }
 
     all_ok = True
     required_ok = True
+    services_result = {}
 
-    for name, checker in services:
-        ok, message = checker(config)
-        status = "OK" if ok else "FAIL"
-        icon = "+" if ok else "-"
-        print(f"[{icon}] {name}: {status}")
-        print(f"    {message}")
+    for name, checker in checkers.items():
+        is_ok, message = checker(config)
+        services_result[name] = (is_ok, message)
 
-        if not ok:
+        if not is_ok:
             all_ok = False
             if name in ["Spotify", "Last.fm"]:
                 required_ok = False
 
-    print("=" * 50)
+    if args.format == "text":
+        print(format_human_readable(services_result, all_ok, required_ok))
+        if not required_ok:
+            sys.exit(1)
+        return
 
-    if all_ok:
-        print("\nAll services configured and connected!")
-    elif required_ok:
-        print("\nRequired services (Spotify, Last.fm) are working.")
-        print("Download services (Qobuz/TIDAL) are optional.")
+    # JSON output
+    name_to_key = {"Spotify": "spotify", "Last.fm": "lastfm", "Qobuz": "qobuz", "TIDAL": "tidal"}
+    services_json = {}
+    for name, (is_ok, message) in services_result.items():
+        key = name_to_key.get(name, name.lower())
+        services_json[key] = {"ok": is_ok, "message": message}
+
+    result = {
+        "services": services_json,
+        "all_ok": all_ok,
+        "required_ok": required_ok
+    }
+
+    if not required_ok:
+        fail(
+            "Required services not configured",
+            hint="Configure Spotify and Last.fm first",
+            recoverable=True
+        )
     else:
-        print("\nRequired services not configured.")
-        print("Please configure Spotify and Last.fm to use MusicMaster.")
-        print("\nSee setup guide for configuration instructions.")
-        sys.exit(1)
+        hint = "All services working." if all_ok else "Required services (Spotify, Last.fm) working. Download services need setup."
+        ok(result, hint=hint)
 
 
 if __name__ == "__main__":

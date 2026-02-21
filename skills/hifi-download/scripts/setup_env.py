@@ -13,6 +13,10 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).parent))
+
+from lib.output import ok, fail
+
 
 def get_skill_dir():
     return Path(__file__).parent.parent.absolute()
@@ -25,7 +29,7 @@ def get_venv_dir():
 def main():
     parser = argparse.ArgumentParser(description="Install MusicMaster dependencies")
     parser.add_argument("--with-qobuz", action="store_true", help="Install qobuz-dl")
-    parser.add_argument("--with-tidal", action="store_true", help="Install tidal-dl")
+    parser.add_argument("--with-tidal", action="store_true", help="Install tiddl")
     parser.add_argument("--force", action="store_true", help="Recreate venv if exists")
     args = parser.parse_args()
 
@@ -35,17 +39,19 @@ def main():
     # Handle existing venv
     if venv_dir.exists():
         if args.force:
-            print(f"Removing existing venv: {venv_dir}")
+            print("Removing existing venv...", file=sys.stderr)
             import shutil
             shutil.rmtree(venv_dir)
         else:
-            print(f"Virtual environment already exists: {venv_dir}")
-            print("Use --force to recreate")
+            print("Virtual environment already exists, reusing.", file=sys.stderr)
 
     # Create venv if needed
     if not venv_dir.exists():
-        print(f"Creating virtual environment: {venv_dir}")
-        subprocess.run([sys.executable, "-m", "venv", str(venv_dir)], check=True)
+        print("Creating virtual environment...", file=sys.stderr)
+        try:
+            subprocess.run([sys.executable, "-m", "venv", str(venv_dir)], check=True)
+        except subprocess.CalledProcessError as e:
+            fail(f"Failed to create venv: {e}", hint="Ensure python3-venv is installed", recoverable=False)
 
     # Get pip path
     pip_path = venv_dir / "bin" / "pip"
@@ -54,18 +60,27 @@ def main():
 
     # Install core dependencies
     core_deps = ["spotipy", "pylast", "requests", "python-dotenv"]
-    print(f"Installing core dependencies: {', '.join(core_deps)}")
-    subprocess.run([str(pip_path), "install", "-q"] + core_deps, check=True)
+    print(f"Installing core dependencies: {', '.join(core_deps)}", file=sys.stderr)
+    try:
+        subprocess.run([str(pip_path), "install", "-q"] + core_deps, check=True)
+    except subprocess.CalledProcessError as e:
+        fail(f"Failed to install core dependencies: {e}", hint="Check network connection and pip configuration", recoverable=True)
 
     # Optional: Qobuz
     if args.with_qobuz:
-        print("Installing qobuz-dl...")
-        subprocess.run([str(pip_path), "install", "-q", "qobuz-dl"], check=True)
+        print("Installing qobuz-dl...", file=sys.stderr)
+        try:
+            subprocess.run([str(pip_path), "install", "-q", "qobuz-dl"], check=True)
+        except subprocess.CalledProcessError as e:
+            fail(f"Failed to install qobuz-dl: {e}", hint="Try: pip install qobuz-dl manually", recoverable=True)
 
     # Optional: TIDAL (uses tiddl - modern alternative to tidal-dl)
     if args.with_tidal:
-        print("Installing tiddl...")
-        subprocess.run([str(pip_path), "install", "-q", "tiddl"], check=True)
+        print("Installing tiddl...", file=sys.stderr)
+        try:
+            subprocess.run([str(pip_path), "install", "-q", "tiddl"], check=True)
+        except subprocess.CalledProcessError as e:
+            fail(f"Failed to install tiddl: {e}", hint="Try: pip install tiddl manually", recoverable=True)
 
     # Create run helper scripts
     run_sh = skill_dir / "run.sh"
@@ -87,12 +102,11 @@ cd /d "%SCRIPT_DIR%"
 python "scripts\\%1.py" %*
 ''')
 
-    print()
-    print("Environment setup complete!")
-    print(f"  Virtual environment: {venv_dir}")
-    print(f"  Run helper: {run_sh}")
-    print()
-    print("Next step: Configure credentials with setup_config.py")
+    ok({
+        "status": "ok",
+        "venv_path": str(venv_dir),
+        "run_helper": str(run_sh)
+    }, hint="Environment setup complete. Edit .env with your credentials.")
 
 
 if __name__ == "__main__":

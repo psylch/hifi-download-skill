@@ -3,7 +3,7 @@
 Check MusicMaster service status.
 
 Usage:
-    python scripts/status.py [--json]
+    python scripts/status.py [--format json|text]
 
 Returns current status of all services, combining:
 - User preferences (enabled/disabled/not_configured)
@@ -22,6 +22,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from lib.config import Config
+from lib.output import ok, fail
 from lib.preferences import Preferences
 
 
@@ -138,9 +139,9 @@ def get_service_status(config: Config, prefs: Preferences) -> dict:
 
         if tiddl_config_path.exists():
             try:
-                import json
+                import json as json_mod
                 with open(tiddl_config_path) as f:
-                    tiddl_config = json.load(f)
+                    tiddl_config = json_mod.load(f)
 
                 auth = tiddl_config.get("auth", {})
                 if auth.get("token") and auth.get("user_id"):
@@ -148,7 +149,6 @@ def get_service_status(config: Config, prefs: Preferences) -> dict:
                     expires = auth.get("expires", 0)
                     if expires and time.time() > expires:
                         # Auto-refresh expired token
-                        # scripts/status.py -> scripts/ -> music-master/ -> music-master/.venv/bin
                         venv_bin = Path(__file__).parent.parent / ".venv" / "bin"
                         tiddl_path = venv_bin / "tiddl"
                         if tiddl_path.exists():
@@ -161,7 +161,7 @@ def get_service_status(config: Config, prefs: Preferences) -> dict:
                             if result.returncode == 0:
                                 # Re-read config after refresh
                                 with open(tiddl_config_path) as f:
-                                    tiddl_config = json.load(f)
+                                    tiddl_config = json_mod.load(f)
                                 auth = tiddl_config.get("auth", {})
                                 tidal_ready = True
                                 tidal_user = auth.get("user_id")
@@ -282,9 +282,25 @@ def format_human_readable(status: dict) -> str:
     return "\n".join(lines)
 
 
+def build_hint(status: dict) -> str:
+    """Build a concise hint summarizing available services."""
+    parts = []
+    summary = status["summary"]
+    if summary["available_discovery"]:
+        parts.append(f"Discovery: {', '.join(summary['available_discovery'])} ready")
+    if summary["available_downloads"]:
+        parts.append(f"Downloads: {', '.join(summary['available_downloads'])} ready")
+    if summary["needs_setup"]:
+        parts.append(f"Needs setup: {', '.join(summary['needs_setup'])}")
+    return ". ".join(parts) + "." if parts else "No services configured."
+
+
 def main():
     parser = argparse.ArgumentParser(description="Check MusicMaster service status")
-    parser.add_argument("--json", action="store_true", help="Output as JSON")
+    parser.add_argument("--format", choices=["json", "text"], default="json",
+                        help="Output format (default: json)")
+    parser.add_argument("--json", action="store_true",
+                        help="(deprecated) Same as --format json")
     args = parser.parse_args()
 
     try:
@@ -293,17 +309,13 @@ def main():
 
         status = get_service_status(config, prefs)
 
-        if args.json:
-            print(json.dumps(status, indent=2))
-        else:
+        if args.format == "text":
             print(format_human_readable(status))
+        else:
+            ok(status, hint=build_hint(status))
 
     except Exception as e:
-        if args.json:
-            print(json.dumps({"error": str(e)}))
-        else:
-            print(f"Error: {e}")
-        sys.exit(1)
+        fail(str(e), hint="Check .env file and preferences.json", recoverable=True)
 
 
 if __name__ == "__main__":

@@ -2,13 +2,13 @@
 """Check download progress by reading shared state."""
 
 import argparse
-import json
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
 from lib.download_state import DownloadStatus, get_task, load_state
+from lib.output import ok, fail
 
 ACTIVE_STATUSES = {DownloadStatus.PENDING, DownloadStatus.IN_PROGRESS}
 
@@ -60,28 +60,34 @@ def format_table(tasks):
     return "\n".join(lines)
 
 
-def output_json(data):
-    print(json.dumps(data, indent=2))
-
-
 def main():
     parser = argparse.ArgumentParser(description="Check download status")
     parser.add_argument("download_id", nargs="?", help="ID of a specific download")
     parser.add_argument("--all", action="store_true", help="Show all downloads")
     parser.add_argument("--active", action="store_true", help="Show only pending/in_progress downloads")
-    parser.add_argument("--json", action="store_true", dest="as_json", help="Output as JSON")
+    parser.add_argument("--json", action="store_true", dest="as_json",
+                        help="(deprecated) JSON is now default; kept for compatibility")
+    parser.add_argument("--format", choices=["json", "text"], default="json",
+                        help="Output format (default: json)")
     args = parser.parse_args()
+
+    use_text = args.format == "text"
 
     # Single download lookup
     if args.download_id:
         task = get_task(args.download_id)
         if not task:
-            print(f"Download {args.download_id} not found", file=sys.stderr)
-            sys.exit(1)
-        if args.as_json:
-            output_json(task.to_dict())
-        else:
+            if use_text:
+                print(f"Download {args.download_id} not found", file=sys.stderr)
+                sys.exit(1)
+            else:
+                fail(f"Download {args.download_id} not found",
+                     hint="Use download_status --all to list available downloads",
+                     recoverable=True)
+        if use_text:
             print(format_single(task))
+        else:
+            ok(task.to_dict(), hint=f"Download {task.id}: {task.status.value}")
         return
 
     # List downloads
@@ -90,12 +96,20 @@ def main():
         if args.active:
             tasks = [t for t in tasks if t.status in ACTIVE_STATUSES]
         if not tasks:
-            print("[]" if args.as_json else "No downloads found.")
+            if use_text:
+                print("No downloads found.")
+            else:
+                ok({"downloads": [], "total": 0, "active": 0, "completed": 0},
+                   hint="No downloads found")
             return
-        if args.as_json:
-            output_json([t.to_dict() for t in tasks])
-        else:
+        if use_text:
             print(format_table(tasks))
+        else:
+            active = sum(1 for t in tasks if t.status in ACTIVE_STATUSES)
+            completed = sum(1 for t in tasks if t.status == DownloadStatus.COMPLETED)
+            ok({"downloads": [t.to_dict() for t in tasks], "total": len(tasks),
+                "active": active, "completed": completed},
+               hint=f"{len(tasks)} downloads: {active} active, {completed} completed")
         return
 
     parser.print_help()

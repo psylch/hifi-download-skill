@@ -25,6 +25,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
+from lib.output import ok, fail
+
 
 def get_auth_url():
     """Start auth and capture the URL."""
@@ -80,20 +82,20 @@ def run_interactive_auth(timeout=300):
     """Run interactive auth flow."""
     import time
 
-    print("TIDAL Device Authorization (tiddl)")
-    print("=" * 40)
-    print()
+    print("TIDAL Device Authorization (tiddl)", file=sys.stderr)
+    print("=" * 40, file=sys.stderr)
+    print(file=sys.stderr)
 
     # Check if already authorized
     valid, msg = verify_token()
     if valid:
-        print(f"Already authorized: {msg}")
-        return True
+        print(f"Already authorized: {msg}", file=sys.stderr)
+        return True, msg
 
     # Run tiddl auth login
-    print("Starting authorization...")
-    print("A URL will appear - open it in your browser and log in to TIDAL.")
-    print()
+    print("Starting authorization...", file=sys.stderr)
+    print("A URL will appear - open it in your browser and log in to TIDAL.", file=sys.stderr)
+    print(file=sys.stderr)
 
     try:
         result = subprocess.run(
@@ -102,21 +104,17 @@ def run_interactive_auth(timeout=300):
         )
 
         if result.returncode == 0:
-            print()
-            print("Authorization successful!")
+            print(file=sys.stderr)
+            print("Authorization successful!", file=sys.stderr)
             valid, msg = verify_token()
             if valid:
-                print(f"  {msg}")
-            return True
-        else:
-            print()
-            print("Authorization failed or was cancelled.")
-            return False
+                print(f"  {msg}", file=sys.stderr)
+            return True, msg
+
+        return False, "cancelled"
 
     except subprocess.TimeoutExpired:
-        print()
-        print("Authorization timed out.")
-        return False
+        return False, "timeout"
 
 
 def main():
@@ -148,23 +146,25 @@ For Automation:
     if args.verify:
         valid, msg = verify_token()
         if valid:
-            print(f"TIDAL: OK - {msg}")
+            ok({"status": "ok", "message": msg}, hint="TIDAL token is valid")
         else:
-            print(f"TIDAL: FAIL - {msg}")
-        sys.exit(0 if valid else 1)
+            fail("TIDAL token invalid", hint=msg, recoverable=True)
 
     if args.get_url:
         url = get_auth_url()
         if url:
-            print(url)
-            sys.exit(0)
+            ok({"url": url}, hint="Open this URL in browser to authorize TIDAL")
         else:
-            print("Failed to get auth URL", file=sys.stderr)
-            sys.exit(1)
+            fail("Failed to get auth URL", recoverable=True)
 
     # Full interactive flow
-    success = run_interactive_auth(args.timeout)
-    sys.exit(0 if success else 1)
+    success, detail = run_interactive_auth(args.timeout)
+    if success:
+        ok({"status": "ok", "authorized": True}, hint="TIDAL authorization successful")
+    elif detail == "timeout":
+        fail("TIDAL authorization timed out", recoverable=True)
+    else:
+        fail("TIDAL authorization failed or cancelled", recoverable=True)
 
 
 if __name__ == "__main__":

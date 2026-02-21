@@ -17,6 +17,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
+from lib.output import ok
 from lib.preferences import Preferences
 
 
@@ -48,12 +49,11 @@ The preference is saved and persists across sessions.
     prefs = Preferences.load()
     prefs.disable_service(args.service, args.reason)
 
-    print(f"Disabled: {args.service}")
-    if args.reason:
-        print(f"Reason: {args.reason}")
-    print()
-    print("This preference is saved. The agent will not attempt to use this service.")
-    print("To re-enable, run: python scripts/enable_service.py", args.service)
+    ok({
+        "service": args.service,
+        "status": "disabled",
+        "reason": args.reason or "user choice"
+    }, hint=f"Disabled {args.service}. Run enable_service.py {args.service} to re-enable.")
 
 
 if __name__ == "__main__":

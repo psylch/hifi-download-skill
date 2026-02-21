@@ -60,14 +60,10 @@ def main():
         result = service.download(item_id, item_type, output_path)
         print(f"Download result: {result}")
 
-        if result.startswith("Error"):
-            update_task(task_id, status=DownloadStatus.FAILED, error=result)
+        if result.get("error"):
+            update_task(task_id, status=DownloadStatus.FAILED, error=result["error"])
         else:
-            file_path = None
-            for line in result.splitlines():
-                if line.startswith("Location:"):
-                    file_path = line.split(":", 1)[1].strip()
-                    break
+            file_path = result.get("location")
             update_task(task_id, status=DownloadStatus.COMPLETED, file_path=file_path, progress=100)
 
     except Exception as e:

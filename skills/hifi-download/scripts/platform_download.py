@@ -18,32 +18,38 @@ from lib.download_state import (
     DownloadStatus, DownloadTask, TMP_DIR,
     add_task, ensure_dirs, new_download_id,
 )
+from lib.output import ok, fail
 from lib.platform import get_platform_service
 
 
 def validate_config(platform: str, config: Config):
     """Exit with an error if the platform is not configured."""
     if platform == "qobuz" and not config.qobuz.is_configured():
-        print("Error: Qobuz not configured. Set QOBUZ_EMAIL and QOBUZ_PASSWORD.", file=sys.stderr)
-        sys.exit(1)
+        fail("Qobuz not configured. Set QOBUZ_EMAIL and QOBUZ_PASSWORD.",
+             hint="Configure Qobuz credentials in environment or config file",
+             recoverable=False)
 
 
 def progress_callback(done: int, total: int):
     if total > 0:
         pct = int(done / total * 100)
-        print(f"Progress: {done}/{total} ({pct}%)")
+        print(f"Progress: {done}/{total} ({pct}%)", file=sys.stderr)
 
 
 def run_sync(args):
-    """Blocking download (legacy behavior)."""
+    """Blocking download."""
     config = Config.load()
     validate_config(args.platform, config)
 
     service = get_platform_service(args.platform, config)
-    print(f"Starting download from {args.platform.upper()}...")
+    print(f"Starting download from {args.platform.upper()}...", file=sys.stderr)
     callback = None if args.quiet else progress_callback
     result = service.download(args.item_id, args.type, args.output, callback)
-    print(result)
+
+    if result.get("error"):
+        fail(result["error"], hint=f"Download failed on {args.platform}")
+    else:
+        ok(result, hint=f"Downloaded from {args.platform}")
 
 
 def run_async(args):
@@ -80,9 +86,13 @@ def run_async(args):
         stderr=subprocess.DEVNULL,
     )
 
-    print(f"Download queued: {download_id}")
-    print(f"Platform: {args.platform.upper()} | Type: {args.type} | ID: {args.item_id}")
-    print(f"Check status: bash ${{SKILL_PATH}}/run.sh download_status {download_id}")
+    ok({
+        "download_id": download_id,
+        "platform": args.platform,
+        "item_type": args.type,
+        "item_id": args.item_id,
+        "status": "queued",
+    }, hint=f"Download queued: {download_id}. Use download_status to check progress.")
 
 
 def main():
@@ -95,6 +105,8 @@ def main():
     parser.add_argument("-o", "--output", help="Custom output path")
     parser.add_argument("-q", "--quiet", action="store_true", help="Suppress progress output")
     parser.add_argument("--sync", action="store_true", help="Block until download completes")
+    parser.add_argument("--format", choices=["json", "text"], default="json",
+                        help="Output format (default: json)")
     args = parser.parse_args()
 
     try:
@@ -102,9 +114,10 @@ def main():
             run_sync(args)
         else:
             run_async(args)
+    except SystemExit:
+        raise
     except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
-        sys.exit(1)
+        fail(str(e), hint="Download request failed")
 
 
 if __name__ == "__main__":

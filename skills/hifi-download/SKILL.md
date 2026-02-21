@@ -7,7 +7,7 @@ description: Discover music, get personalized recommendations, and download high
 
 Music discovery (Spotify, Last.fm) and Hi-Res audio downloads (Qobuz, TIDAL) through a unified CLI.
 
-All commands use `bash ${SKILL_PATH}/run.sh <script> [args...]`, which activates the venv and runs the corresponding Python script. Output is human-readable by default; use `--json` where supported for structured output.
+All commands use `bash ${SKILL_PATH}/run.sh <script> [args...]`, which activates the venv and runs the corresponding Python script. All scripts output structured JSON to stdout by default. Use `--format text` for human-readable output. Errors are JSON on stderr with exit code 1 (recoverable) or 2 (unrecoverable).
 
 ## First-Time Setup
 
@@ -17,7 +17,7 @@ All commands use `bash ${SKILL_PATH}/run.sh <script> [args...]`, which activates
 bash ${SKILL_PATH}/scripts/setup.sh check
 ```
 
-Output is key=value pairs. If `VENV=missing`, run install first.
+Output is key=value pairs (this is a shell script, not a Python script). If `VENV=missing`, run install first.
 
 ### Step 2: Install
 
@@ -52,7 +52,7 @@ bash ${SKILL_PATH}/run.sh setup_config --lastfm-key=KEY [--spotify-id=ID --spoti
 bash ${SKILL_PATH}/run.sh status
 ```
 
-Shows which services are **READY**, **DISABLED**, or **need setup**. **Only use services marked READY.**
+Returns JSON with `discovery` and `downloads` sections showing service status (`ready`, `disabled`, `not_configured`, `error`). **Only use services with `"available": true`.**
 
 ## Service Types
 
@@ -69,7 +69,7 @@ Shows which services are **READY**, **DISABLED**, or **need setup**. **Only use 
 bash ${SKILL_PATH}/run.sh lastfm_artists "Radiohead"
 ```
 
-Returns a list of similar artists with match scores.
+Returns JSON with `results` array of similar artists (name, match score, URL).
 
 ### Last.fm — Similar Tracks
 
@@ -85,7 +85,7 @@ Arguments: track name, then artist name.
 bash ${SKILL_PATH}/run.sh lastfm_taste
 ```
 
-Returns the user's top artists and tracks from listening history.
+Analyzes Spotify listening history and returns JSON with `similar_artists` and `similar_tracks` discovered via Last.fm.
 
 ### Spotify — Search
 
@@ -93,7 +93,7 @@ Returns the user's top artists and tracks from listening history.
 bash ${SKILL_PATH}/run.sh spotify_search "OK Computer"
 ```
 
-Searches Spotify catalog for tracks, albums, and artists.
+Searches Spotify catalog. Returns JSON with `results` array containing track/album/artist details.
 
 ### Spotify — User Library
 
@@ -101,7 +101,7 @@ Searches Spotify catalog for tracks, albums, and artists.
 bash ${SKILL_PATH}/run.sh spotify_user tracks|artists
 ```
 
-Gets the user's saved tracks or followed artists (requires OAuth).
+Gets the user's top tracks or artists from Spotify (requires OAuth). Returns JSON with `results` array.
 
 ### Spotify — Track/Album Info
 
@@ -117,7 +117,7 @@ bash ${SKILL_PATH}/run.sh spotify_info SPOTIFY_URI_OR_ID
 bash ${SKILL_PATH}/run.sh platform_search "Album Name" -p qobuz|tidal
 ```
 
-Searches the download platform's catalog. Returns IDs for use with download command.
+Searches the download platform's catalog. Returns JSON with `results` array containing IDs for use with download command.
 
 ### Download (async — returns immediately)
 
@@ -125,7 +125,7 @@ Searches the download platform's catalog. Returns IDs for use with download comm
 bash ${SKILL_PATH}/run.sh platform_download ID -p qobuz|tidal -t album|track
 ```
 
-Queues the download in a background process and returns a `download_id` immediately. The agent is free to continue other work. Use `download_status` to poll progress.
+Queues the download in a background process and returns JSON with `download_id` immediately. The agent is free to continue other work. Use `download_status` to poll progress.
 
 To block until the download completes (legacy behavior):
 
@@ -139,10 +139,9 @@ bash ${SKILL_PATH}/run.sh platform_download ID -p qobuz -t album --sync
 bash ${SKILL_PATH}/run.sh download_status DOWNLOAD_ID
 bash ${SKILL_PATH}/run.sh download_status --all
 bash ${SKILL_PATH}/run.sh download_status --active
-bash ${SKILL_PATH}/run.sh download_status --json
 ```
 
-Poll the status of a specific download or list all downloads. Use `--active` to show only pending/in_progress tasks. Use `--json` for structured output.
+Poll the status of a specific download or list all downloads. Use `--active` to show only pending/in_progress tasks. Output is JSON by default; use `--format text` for human-readable output.
 
 ### Open Download Dashboard
 
@@ -189,11 +188,12 @@ bash ${SKILL_PATH}/run.sh enable_service spotify
 | Error | Detection | Resolution |
 |-------|-----------|------------|
 | Venv missing | `run.sh` exits with `venv_missing` | Run `bash ${SKILL_PATH}/scripts/setup.sh install` |
-| Service not configured | `status` shows `NOT CONFIGURED` | Guide user to edit `.env` or run `setup_config` |
-| Spotify OAuth expired | Spotify commands fail with auth error | Run `bash ${SKILL_PATH}/run.sh spotify_auth` to re-authorize |
-| TIDAL token expired | `status` shows `ERROR` for TIDAL | Run `tiddl auth refresh` or `tiddl auth login` in venv |
-| Service disabled by user | `status` shows `DISABLED` | Run `enable_service` if user wants to re-enable |
-| No results | Search returns empty | Try different keywords or check service availability |
+| Service not configured | `status` JSON shows `"status": "not_configured"` | Guide user to edit `.env` or run `setup_config` |
+| Spotify OAuth expired | stderr JSON with auth error (exit 1) | Run `bash ${SKILL_PATH}/run.sh spotify_auth` to re-authorize |
+| TIDAL token expired | `status` JSON shows `"status": "error"` for tidal | Run `tiddl auth refresh` or `tiddl auth login` in venv |
+| Service disabled by user | `status` JSON shows `"status": "disabled"` | Run `enable_service` if user wants to re-enable |
+| No results | JSON `"results": []` with `"total": 0` | Try different keywords or check service availability |
+| Unrecoverable error | stderr JSON with `"recoverable": false` (exit 2) | Fix root cause (missing credentials, broken install) |
 
 ## Important Notes
 
