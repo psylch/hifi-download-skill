@@ -60,11 +60,11 @@ def main():
         result = service.download(item_id, item_type, output_path)
         print(f"Download result: {result}")
 
-        if result.get("error"):
-            update_task(task_id, status=DownloadStatus.FAILED, error=result["error"])
+        # service.download() returns a string — check for error prefix
+        if isinstance(result, str) and result.lower().startswith("error"):
+            update_task(task_id, status=DownloadStatus.FAILED, error=result)
         else:
-            file_path = result.get("location")
-            update_task(task_id, status=DownloadStatus.COMPLETED, file_path=file_path, progress=100)
+            update_task(task_id, status=DownloadStatus.COMPLETED, file_path=str(result), progress=100)
 
     except Exception as e:
         print(f"Worker exception: {e}")
